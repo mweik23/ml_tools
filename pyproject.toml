@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "shared-lib"                # choose a unique name
+name = "ml_tools"                # choose a unique name
 version = "0.1.0"
 requires-python = ">=3.9,<3.10"
 dependencies = [
@@ -12,4 +12,10 @@ dependencies = [
   "matplotlib",
   "scikit-learn",
   "h5py"
-]  
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

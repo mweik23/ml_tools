@@ -1,0 +1,14 @@
+LICENSE
+README.md
+pyproject.toml
+src/shared_lib/__init__.py
+src/shared_lib.egg-info/PKG-INFO
+src/shared_lib.egg-info/SOURCES.txt
+src/shared_lib.egg-info/dependency_links.txt
+src/shared_lib.egg-info/requires.txt
+src/shared_lib.egg-info/top_level.txt
+src/shared_lib/training/__init__.py
+src/shared_lib/training/schedulers.py
+src/shared_lib/utils/__init__.py
+src/shared_lib/utils/distributed.py
+tests/test_placeholder.py
