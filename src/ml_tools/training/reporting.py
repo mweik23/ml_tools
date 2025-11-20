@@ -4,17 +4,11 @@ import torch
 import numpy as np
 from typing import Optional
 from scipy.stats import norm
-SRC_DIR = (Path(__file__).parents[1]).resolve()
-import sys
-sys.path.append(str(SRC_DIR))
-from utils.distributed import is_master #TODO: check if there is a cleaner way to put this on the path
 
 def display_epoch_summary(*, 
                           partition: str, 
                           epoch: int, 
                           tot_epochs: int, 
-                          bce: float, 
-                          mmd: float, 
                           acc: float, 
                           time_s: float, 
                           domain: str = 'Source',
@@ -22,12 +16,16 @@ def display_epoch_summary(*,
                           best_val: float = None,
                           auc: float = None,
                           r30: float = None,
+                          bce: Optional[float] = None, 
+                          mmd: Optional[float] = None,
+                          loss: Optional[float] = None,
                           logger=None):
-    if not is_master(): 
-        return
     msg = (124 * "-" + "\n" +
            f"Domain: {domain} [{partition}] Epoch {epoch}/{tot_epochs} — "
-           f"BCE {bce:.4f}, MMD {mmd:.4f}, Acc {acc:.4f}, Time {time_s:.1f}s")
+           +(f"BCE {bce:.4f}, " if bce is not None else "")
+           +(f"MMD {mmd:.4f}, " if mmd is not None else "")
+           +(f"Loss {loss:.4f}, " if loss is not None else "")
+           +f"Acc {acc:.4f}, Time {time_s:.1f}s")
     if auc is not None:
         msg += f", AUC {auc:.4f}"
     if r30 is not None:
@@ -45,8 +43,6 @@ def display_status(*, phase: str, domain: str, epoch: int, tot_epochs: int,
                    running_acc: float, avg_batch_time: float, 
                    running_bce: Optional[float] = None, running_mmd: Optional[float] = None,
                    running_loss: Optional[float] = None, logger=None):
-    if not is_master():
-        return
 
     msg = (
         f">> {phase} ({domain}):\tEpoch {epoch}/{tot_epochs}\t"
@@ -75,8 +71,10 @@ def finish_roc_plot(path, ax, is_primary=True):
 
 
 
-def make_train_plt(train_metrics, path, pretrained=False, do_MMD=False, rename_map={}):
-    keys_needed = ['epochs', 'train_BCE', 'val_BCE']
+def make_train_plt(train_metrics, path, pretrained=False, do_MMD=False, rename_map={}, main_loss_name='BCE'):
+    main_train_loss_key = f'train_{main_loss_name}'
+    main_val_loss_key = f'val_{main_loss_name}'
+    keys_needed = ['epochs', main_train_loss_key, main_val_loss_key]
     if do_MMD:
         keys_needed += ['train_MMD', 'val_MMD', 'train_loss', 'val_loss']
 
@@ -91,8 +89,8 @@ def make_train_plt(train_metrics, path, pretrained=False, do_MMD=False, rename_m
     else:
         train_start = 0
     fig, ax = plt.subplots()
-    ax.plot(train_metrics['epochs'][train_start:], train_metrics['train_BCE'], color='b', linestyle='dotted' if do_MMD else 'solid', label='train BCE')
-    ax.plot(train_metrics['epochs'], train_metrics['val_BCE'], color='r', linestyle='dotted' if do_MMD else 'solid', label='val BCE')
+    ax.plot(train_metrics['epochs'][train_start:], train_metrics[main_train_loss_key], color='b', linestyle='dotted' if do_MMD else 'solid', label=main_train_loss_key)
+    ax.plot(train_metrics['epochs'], train_metrics[main_val_loss_key], color='r', linestyle='dotted' if do_MMD else 'solid', label=main_val_loss_key)
 
     if do_MMD:
         ax.plot(train_metrics['epochs'][train_start:], train_metrics['train_MMD'], color='b', linestyle='dashed', label='train MMD')
