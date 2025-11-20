@@ -3,7 +3,7 @@ from pathlib import Path
 from sklearn.metrics import roc_curve
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import Any
+from typing import Any, Optional
 from collections import deque
 from dataclasses import dataclass
 import time
@@ -44,6 +44,7 @@ class RunningStats:
         w = max(1, int(self.window))
         self._bce = deque(maxlen=w)
         self._mmd = deque(maxlen=w)
+        self._loss = deque(maxlen=w)
         self._correct = deque(maxlen=w)
         self._batch_sizes = deque(maxlen=w)
         self._initial_time = time.time()
@@ -53,23 +54,32 @@ class RunningStats:
         self.reset_epoch()
 
     # ---- per-batch update ----
-    def update(self, *, BCE_loss: float, correct: int, batch_size: int, MMD_loss: Any = None):
+    def update(self, * correct: int, batch_size: int, loss: Optional[float]=None, BCE_loss: Optional[float]=None, MMD_loss: Optional[float] = None):
         #detach
-        BCE_loss = BCE_loss.detach().cpu().item()
+        if BCE_loss is not None:
+            BCE_loss = BCE_loss.detach().cpu().item()
         if MMD_loss is not None:
             MMD_loss = MMD_loss.detach().cpu().item()
+        if loss is not None:
+            loss = loss.detach().cpu().item()
 
         # window buffers
-        self._bce.append(float(BCE_loss))
+        if BCE_loss is not None:
+            self._bce.append(float(BCE_loss))
         if MMD_loss is not None:
             self._mmd.append(float(MMD_loss))
+        if loss is not None:
+            self._loss.append(float(loss))
         self._correct.append(int(correct))
         self._batch_sizes.append(int(batch_size))
         self._seen_batches += 1
         # epoch totals
-        self.epoch_bce_sum += float(BCE_loss) * int(batch_size)   # sample-weighted
+        if BCE_loss is not None:
+            self.epoch_bce_sum += float(BCE_loss) * int(batch_size)   # sample-weighted
         if MMD_loss is not None:
             self.epoch_mmd_sum += float(MMD_loss) * int(batch_size)   # sample-weighted
+        if loss is not None:
+            self.epoch_loss_sum += float(loss) * int(batch_size)   # sample-weighted
         self.epoch_correct += int(correct)
         self.epoch_count   += int(batch_size)
 
@@ -96,16 +106,22 @@ class RunningStats:
         return (sum(self._mmd[i] * self._batch_sizes[i] for i in range(len(self._mmd))) / max(1, bs)) if bs else 0.0
 
     @property
+    def running_loss(self) -> float:
+        bs = sum(self._batch_sizes)
+        return (sum(self._loss[i] * self._batch_sizes[i] for i in range(len(self._loss))) / max(1, bs)) if bs else 0.0
+    
+    @property
     def running_acc(self) -> float:
         bs = sum(self._batch_sizes)
         return (sum(self._correct) / max(1, bs)) if bs else 0.0
 
     # ---- epoch aggregates (local, pre-DDP) ----
-    def epoch_loss_avgs(self) -> tuple[float, float]:
-        """Return (bce_avg, mmd_avg) weighted by samples across the whole epoch (local rank only)."""
+    def epoch_loss_avgs(self) -> tuple[float, float, float]:
+        """Return (bce_avg, mmd_avg, loss_avg) weighted by samples across the whole epoch (local rank only)."""
         if self.epoch_count == 0:
-            return 0.0, 0.0
-        return self.epoch_bce_sum / self.epoch_count, self.epoch_mmd_sum / self.epoch_count
+            return (0.0, 0.0, 0.0)
+        out = (self.epoch_bce_sum / self.epoch_count, self.epoch_mmd_sum / self.epoch_count, self.epoch_loss_sum / self.epoch_count)
+        return out
 
     def epoch_accuracy(self) -> float:
         return (self.epoch_correct / self.epoch_count) if self.epoch_count else 0.0
@@ -117,9 +133,10 @@ class RunningStats:
     def reset_epoch(self):
         self.epoch_bce_sum = 0.0
         self.epoch_mmd_sum = 0.0
+        self.epoch_loss_sum = 0.0
         self.epoch_correct = 0
         self.epoch_count   = 0
-        self._bce.clear(); self._mmd.clear(); self._correct.clear(); self._batch_sizes.clear()
+        self._bce.clear(); self._mmd.clear(); self._loss.clear(); self._correct.clear(); self._batch_sizes.clear()
         self._initial_time = time.time()
         self._last_time = self._initial_time 
         self._seen_batches = 0

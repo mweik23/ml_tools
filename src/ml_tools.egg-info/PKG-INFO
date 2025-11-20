@@ -1,5 +1,5 @@
 Metadata-Version: 2.4
-Name: shared-lib
+Name: ml_tools
 Version: 0.1.0
 Requires-Python: <3.10,>=3.9
 License-File: LICENSE

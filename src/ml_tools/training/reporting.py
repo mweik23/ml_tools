@@ -2,11 +2,12 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import torch
 import numpy as np
+from typing import Optional
 from scipy.stats import norm
 SRC_DIR = (Path(__file__).parents[1]).resolve()
 import sys
 sys.path.append(str(SRC_DIR))
-from utils.distributed import is_master
+from utils.distributed import is_master #TODO: check if there is a cleaner way to put this on the path
 
 def display_epoch_summary(*, 
                           partition: str, 
@@ -41,17 +42,21 @@ def display_epoch_summary(*,
 
 def display_status(*, phase: str, domain: str, epoch: int, tot_epochs: int,
                    batch_idx: int, num_batches: int,
-                   running_bce: float, running_mmd: float,
-                   running_acc: float, avg_batch_time: float,
-                   logger=None):
+                   running_acc: float, avg_batch_time: float, 
+                   running_bce: Optional[float] = None, running_mmd: Optional[float] = None,
+                   running_loss: Optional[float] = None, logger=None):
     if not is_master():
         return
 
-    msg = (f">> {phase} ({domain}):\tEpoch {epoch}/{tot_epochs}\t"
-           f"Batch {batch_idx}/{num_batches}\t"
-           f"BCE {running_bce:.4f}\tMMD {running_mmd:.4f}\t"
-           f"RunAcc {running_acc:.3f}\t"
-           f"AvgBatchTime {avg_batch_time:.4f}s")
+    msg = (
+        f">> {phase} ({domain}):\tEpoch {epoch}/{tot_epochs}\t"
+        f"Batch {batch_idx}/{num_batches}\t"
+        + (f"Loss {running_loss:.4f}\t" if running_loss is not None else "")
+        + (f"BCE {running_bce:.4f}\t" if running_bce is not None else "")
+        + (f"MMD {running_mmd:.4f}\t" if running_mmd is not None else "")
+        +(f"RunAcc {running_acc:.3f}\t"
+        f"AvgBatchTime {avg_batch_time:.4f}s")
+    )
     (logger.info if logger else print)(msg)
     return msg
 

@@ -24,24 +24,34 @@ def _sum_reduce_scalar(x: float, device: torch.device) -> float:
     return float(t.item())
 
 def globalize_epoch_totals(*, 
-    local_bce_sum: float,
-    local_mmd_sum: float,
     local_correct: int,
     local_count: int,
     device: torch.device,
+    local_bce_sum: Optional[float] = None,
+    local_mmd_sum: Optional[float] = None,
+    local_loss_sum: Optional[float] = None,
 ):
-    g_bce  = _sum_reduce_scalar(local_bce_sum, device)
-    g_mmd  = _sum_reduce_scalar(local_mmd_sum, device)
+    g_bce  = _sum_reduce_scalar(local_bce_sum, device) if local_bce_sum is not None else None
+    g_mmd  = _sum_reduce_scalar(local_mmd_sum, device) if local_mmd_sum is not None else None
+    g_loss = _sum_reduce_scalar(local_loss_sum, device) if local_loss_sum is not None else None
     g_corr = _sum_reduce_scalar(float(local_correct), device)
     g_cnt  = _sum_reduce_scalar(float(local_count), device)
-    return g_bce, g_mmd, int(round(g_corr)), int(round(g_cnt))
+    return int(round(g_corr)), int(round(g_cnt)), g_bce, g_mmd, g_loss
 
-def epoch_metrics_from_globals(*, g_bce_sum: float, g_mmd_sum: float, g_correct: int, g_count: int):
+def epoch_metrics_from_globals(*, g_correct: int, 
+                               g_count: int,
+                               g_bce_sum: Optional[float] = None, 
+                               g_mmd_sum: Optional[float] = None,
+                               g_loss_sum: Optional[float] = None) -> Dict[str, Optional[float]]:
     if g_count == 0:
-        return dict(BCE_loss=0.0, MMD_loss=0.0, acc=0.0)
+        return dict(BCE_loss=0.0 if g_bce_sum is not None else None, 
+                    MMD_loss=0.0 if g_mmd_sum is not None else None, 
+                    loss=0.0 if g_loss_sum is not None else None,
+                    acc=0.0)
     return dict(
-        BCE_loss=g_bce_sum / g_count,
-        MMD_loss=g_mmd_sum / g_count,
+        BCE_loss=g_bce_sum / g_count if g_bce_sum is not None else None,
+        MMD_loss=g_mmd_sum / g_count if g_mmd_sum is not None else None,
+        loss=g_loss_sum / g_count if g_loss_sum is not None else None,
         acc=g_correct / g_count,
     )
 
