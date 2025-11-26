@@ -6,6 +6,22 @@ import numpy as np
 from dataclasses import dataclass
 from typing import Literal, Callable, Optional
 
+@dataclass
+class SchedConfig:
+    kind: Literal[
+        "cosine_warmup", "onecycle", "step", "multistep", "plateau", "cosine_warmup"
+    ] =  "warmup_plateau"
+    lr_init_factor: float = 0.0 #TODO: figure out how to pass this from full_cfg
+    warmup_epochs: int = 10
+    step_size: int = 30
+    gamma: float = 0.1
+    milestones: tuple[int, ...] = ()
+    pct_start: float = 0.3  # for OneCycle
+    mode: Literal["min","max"] = "min"  # for Plateau
+    factor: float = 0.5
+    patience: int = 5
+    threshold: float = 1e-4  # for Plateau
+
 class WarmupThenPlateau:
     def __init__(self, optimizer, *, warmup_steps:Optional[int]=None, warmup_epochs:Optional[int]=None,
                  start_factor:float=0.0, end_factor:float=1.0, plateau_kwargs:Optional[dict]=None):
@@ -48,21 +64,6 @@ SchedConfig(
     mode = "min"
     )
 '''
-@dataclass
-class SchedConfig:
-    kind: Literal[
-        "cosine_warmup", "onecycle", "step", "multistep", "plateau", "cosine_warmup"
-    ] =  "warmup_plateau"
-    lr_min: float = 0.0
-    warmup_epochs: int = 10
-    step_size: int = 30
-    gamma: float = 0.1
-    milestones: tuple[int, ...] = ()
-    pct_start: float = 0.3  # for OneCycle
-    mode: Literal["min","max"] = "min"  # for Plateau
-    factor: float = 0.5
-    patience: int = 5
-    threshold: float = 1e-4  # for Plateau
 
 def make_scheduler(optimizer, cfg: SchedConfig, *, total_steps: Optional[int]=None, steps_per_epoch: int=1):
     if cfg.kind == "cosine_warmup":
@@ -71,7 +72,7 @@ def make_scheduler(optimizer, cfg: SchedConfig, *, total_steps: Optional[int]=No
                 return (step + 1) / max(1, cfg.warmup_steps)
             # cosine from 1.0 -> lr_min ratio
             prog = (step - cfg.warmup_steps) / max(1, total_steps - cfg.warmup_steps)
-            return cfg.lr_min + (1 - cfg.lr_min) * 0.5 * (1 + torch.cos(torch.pi * prog))
+            return cfg.lr_init_factor + (1 - cfg.lr_init_factor) * 0.5 * (1 + torch.cos(torch.pi * prog))
         return torch.optim.lr_scheduler.LambdaLR(optimizer, lf)
 
     if cfg.kind == "onecycle":
@@ -99,14 +100,14 @@ def make_scheduler(optimizer, cfg: SchedConfig, *, total_steps: Optional[int]=No
             return WarmupThenPlateau(
             optimizer,
             warmup_epochs=cfg.warmup_epochs,
-            start_factor=cfg.lr_min,
+            start_factor=cfg.lr_init_factor,
             plateau_kwargs=dict(mode=cfg.mode, factor=cfg.factor, patience=cfg.patience, threshold=cfg.threshold)
         )
         else:
             return WarmupThenPlateau(
                 optimizer,
                 warmup_steps=cfg.warmup_epochs * steps_per_epoch,
-                start_factor=cfg.lr_min,
+                start_factor=cfg.lr_init_factor,
                 plateau_kwargs=dict(mode=cfg.mode, factor=cfg.factor, patience=cfg.patience, threshold=cfg.threshold)
             )
     raise ValueError(f"Unknown scheduler kind: {cfg.kind}")

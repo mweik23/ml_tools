@@ -3,7 +3,7 @@ from torch import nn
 import torch.distributed as dist
 import os
 import socket
-from dataclasses import dataclass
+from dataclasses import dataclass, field, asdict, fields
 from typing import Optional, Dict, Any, Sequence
 import multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel
@@ -309,7 +309,7 @@ def setup_dist(arg_num_workers: Optional[int] = None) -> DistInfo:  # NEW: optio
     node_rank = _infer_node_rank()
     master_addr, master_port = _resolve_master()
 
-    device_type, device_name, has_cuda = _choose_device(local_rank, world_size)
+    device_type, device_name, has_cuda = _choose_device(local_rank, world_size) #device is set here
     backend = _choose_backend(device_type)
 
     try:
@@ -320,8 +320,8 @@ def setup_dist(arg_num_workers: Optional[int] = None) -> DistInfo:  # NEW: optio
 
     # NEW:
     num_workers, cpus_per_task, cpu_affinity = _infer_num_workers(arg_num_workers)
-
-    return DistInfo(
+    
+    dist_info = DistInfo(
         backend=backend,
         initialized=dist.is_available() and dist.is_initialized(),
         rank=rank,
@@ -339,6 +339,8 @@ def setup_dist(arg_num_workers: Optional[int] = None) -> DistInfo:  # NEW: optio
         cpus_per_task=cpus_per_task,
         cpu_affinity_count=cpu_affinity,
     )
+    
+    return dist_info
 
 class DDPShim(nn.Module):
     def __init__(self, module: nn.Module):
