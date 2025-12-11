@@ -4,6 +4,7 @@ import torch
 import numpy as np
 from typing import Optional
 from scipy.stats import norm
+from ml_tools.utils.distributed import is_master
 
 def display_epoch_summary(*, 
                           partition: str, 
@@ -38,12 +39,13 @@ def display_epoch_summary(*,
     (logger.info if logger else print)(msg)
     return msg
 
-def display_status(*, phase: str, domain: str, epoch: int, tot_epochs: int,
+def display_status(*, phase: str, epoch: int, tot_epochs: int,
                    batch_idx: int, num_batches: int,
                    running_acc: float, avg_batch_time: float, 
                    running_bce: Optional[float] = None, running_mmd: Optional[float] = None,
-                   running_loss: Optional[float] = None, logger=None):
-
+                   running_loss: Optional[float] = None, domain: str = 'Source', logger=None):
+    if not is_master(): 
+        return
     msg = (
         f">> {phase} ({domain}):\tEpoch {epoch}/{tot_epochs}\t"
         f"Batch {batch_idx}/{num_batches}\t"

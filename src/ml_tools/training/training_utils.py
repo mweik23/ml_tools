@@ -132,7 +132,7 @@ class Event:
 
 @dataclass(frozen=True)
 class Initialization(Event):
-    bce_estimate: float  # initial BCE loss estimate (for MMD norm)
+    bce_estimate: Optional[float] = None  # initial BCE loss estimate (for MMD norm)
     mmd_estimate: Optional[float] = None  # initial MMD loss estimate
 
 @dataclass(frozen=True)

@@ -12,6 +12,71 @@ def get_correct(pred, label):
         predict = pred.max(1).indices
         correct = torch.sum(predict == label).item()
         return correct
+import torch
+import torch.nn.functional as F
+
+def binarize(preds, labels, threshold: float = 0.5):
+    """
+    preds:  (N, 1, H, W) logits
+    labels: (N, 1, H, W) soft or hard values in [0,1]
+    """
+    probs = torch.sigmoid(preds)
+    pred_hard = (probs >= threshold).long()
+    label_hard = (labels >= threshold).long()
+    return pred_hard, label_hard
+
+
+def compute_confusion(pred_hard, label_hard):
+    """
+    Returns: TP, FP, FN, TN as scalars
+    """
+    pred_hard = pred_hard.reshape(-1)
+    label_hard = label_hard.reshape(-1)
+    
+    tp = torch.sum((pred_hard == 1) & (label_hard == 1)).item()
+    fp = torch.sum((pred_hard == 1) & (label_hard == 0)).item()
+    fn = torch.sum((pred_hard == 0) & (label_hard == 1)).item()
+    tn = torch.sum((pred_hard == 0) & (label_hard == 0)).item()
+    return tp, fp, fn, tn
+
+
+def precision(tp, fp):
+    return tp / (tp + fp) if (tp + fp) > 0 else 0.0
+
+
+def recall(tp, fn):
+    return tp / (tp + fn) if (tp + fn) > 0 else 0.0
+
+
+def f1_score(tp, fp, fn):
+    denom = (2 * tp + fp + fn)
+    return (2 * tp) / denom if denom > 0 else 0.0
+
+
+def dice_coefficient(tp, fp, fn):
+    # identical to F1 for binary segmentation
+    denom = (2 * tp + fp + fn)
+    return (2 * tp) / denom if denom > 0 else 0.0
+
+def segmentation_metrics(preds, labels, threshold: float = 0.5):
+    pred_hard, label_hard = binarize(preds, labels, threshold)
+    tp, fp, fn, tn = compute_confusion(pred_hard, label_hard)
+
+    prec  = precision(tp, fp)
+    rec   = recall(tp, fn)
+    f1    = f1_score(tp, fp, fn)
+    dice  = dice_coefficient(tp, fp, fn)
+
+    return {
+        "precision": prec,
+        "recall": rec,
+        "f1": f1,
+        "dice": dice,
+        "tp": tp,
+        "fp": fp,
+        "fn": fn,
+        "tn": tn,
+    }
     
 #masks controls the number of domains to calculate metrics for
 def get_batch_metrics(batch, loss_fns, mmd_coef=1.0, use_tar_labels=False, domains=['Source']):
@@ -54,7 +119,7 @@ class RunningStats:
         self.reset_epoch()
 
     # ---- per-batch update ----
-    def update(self, * correct: int, batch_size: int, loss: Optional[float]=None, BCE_loss: Optional[float]=None, MMD_loss: Optional[float] = None):
+    def update(self, *, correct: int, batch_size: int, loss: Optional[float]=None, BCE_loss: Optional[float]=None, MMD_loss: Optional[float] = None):
         #detach
         if BCE_loss is not None:
             BCE_loss = BCE_loss.detach().cpu().item()
