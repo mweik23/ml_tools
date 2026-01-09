@@ -370,6 +370,17 @@ def maybe_convert_syncbn(model, device_type: str, world_size: int, process_group
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model, process_group=process_group)
     return model
 
+def sync_confusion_and_loss(tp, fp, fn, tn, loss_sum, num_batches, device):
+    t = torch.tensor(
+        [tp, fp, fn, tn, loss_sum, num_batches],
+        dtype=torch.float64,
+        device=device,
+    )
+    if dist.is_initialized():
+        dist.all_reduce(t, op=dist.ReduceOp.SUM)
+    return t  # same on all ranks after all_reduce
+
+
 def dist_global_variance_autograd(x: torch.Tensor,
                                   mask: Optional[torch.Tensor] = None,
                                   unbiased: bool = True,

@@ -1,62 +1,109 @@
+from __future__ import annotations
 from pathlib import Path
 import matplotlib.pyplot as plt
 import torch
 import numpy as np
 from typing import Optional
 from scipy.stats import norm
-from ml_tools.utils.distributed import is_master
+from typing import Mapping, Optional, Callable, Any
 
-def display_epoch_summary(*, 
-                          partition: str, 
-                          epoch: int, 
-                          tot_epochs: int, 
-                          acc: float, 
-                          time_s: float, 
-                          domain: str = 'Source',
-                          best_epoch: int = None,
-                          best_val: float = None,
-                          auc: float = None,
-                          r30: float = None,
-                          bce: Optional[float] = None, 
-                          mmd: Optional[float] = None,
-                          loss: Optional[float] = None,
-                          logger=None):
-    msg = (124 * "-" + "\n" +
-           f"Domain: {domain} [{partition}] Epoch {epoch}/{tot_epochs} — "
-           +(f"BCE {bce:.4f}, " if bce is not None else "")
-           +(f"MMD {mmd:.4f}, " if mmd is not None else "")
-           +(f"Loss {loss:.4f}, " if loss is not None else "")
-           +f"Acc {acc:.4f}, Time {time_s:.1f}s")
-    if auc is not None:
-        msg += f", AUC {auc:.4f}"
-    if r30 is not None:
-        msg += f", R30 {r30:.4f}"
-    (logger.info if logger else print)(msg)
-    msg=''
-    if partition == 'validation' and best_epoch is not None and best_val is not None:
-        msg += f"  (best val epoch {best_epoch} with loss {best_val:.4f})\n"
-    msg += 124 * "-"
-    (logger.info if logger else print)(msg)
-    return msg
+def _fmt_metrics(metrics: Mapping[str, Any], *, order: tuple[str, ...] = ()) -> str:
+    """
+    Format a flat dict of scalar metrics as: 'Loss 0.1234, Acc 0.9876, ...'
+    - Skips None.
+    - Uses `order` first, then remaining keys alphabetically.
+    """
+    def fmt_one(k: str, v: Any) -> Optional[str]:
+        if v is None:
+            return None
+        # ints as ints, floats as 4dp by default
+        if isinstance(v, bool):
+            return f"{k} {v}"
+        if isinstance(v, int):
+            return f"{k} {v}"
+        try:
+            fv = float(v)
+        except Exception:
+            return f"{k} {v}"
+        # heuristics: time-like keys or large values
+        if k.lower().endswith("time_s") or k.lower().endswith("time"):
+            return f"{k} {fv:.1f}s"
+        return f"{k} {fv:.4f}"
 
-def display_status(*, phase: str, epoch: int, tot_epochs: int,
-                   batch_idx: int, num_batches: int,
-                   running_acc: float, avg_batch_time: float, 
-                   running_bce: Optional[float] = None, running_mmd: Optional[float] = None,
-                   running_loss: Optional[float] = None, domain: str = 'Source', logger=None):
-    if not is_master(): 
-        return
+    keys = []
+    seen = set()
+    for k in order:
+        if k in metrics:
+            keys.append(k); seen.add(k)
+    for k in sorted(metrics.keys()):
+        if k not in seen:
+            keys.append(k)
+
+    parts = []
+    for k in keys:
+        s = fmt_one(k, metrics[k])
+        if s is not None:
+            parts.append(s)
+    return ", ".join(parts)
+
+
+def display_epoch_summary(
+    *,
+    partition: str,
+    epoch: int,
+    tot_epochs: int,
+    time_s: float,
+    metrics: Mapping[str, Any],
+    domain: str = "Source",
+    best_epoch: int | None = None,
+    best_val: float | None = None,
+    logger=None,
+    metric_order: tuple[str, ...] = ("loss", "bce", "mmd", "acc", "dice", "precision", "recall", "auc", "r30"),
+) -> str:
+    log: Callable[[str], None] = logger.info if logger else print
+
+    header = 124 * "-" + "\n"
+    body = (
+        f"Domain: {domain} [{partition}] Epoch {epoch}/{tot_epochs} — "
+        + _fmt_metrics({**metrics, "time_s": time_s}, order=metric_order + ("time_s",))
+    )
+    log(header + body)
+
+    tail = ""
+    if partition == "validation" and best_epoch is not None and best_val is not None:
+        tail += f"  (best val epoch {best_epoch} with loss {best_val:.4f})\n"
+    tail += 124 * "-"
+    log(tail)
+
+    return header + body + "\n" + tail
+
+def display_status(
+    *,
+    phase: str,
+    epoch: int,
+    tot_epochs: int,
+    batch_idx: int,
+    num_batches: int,
+    metrics: Mapping[str, Any],
+    avg_batch_time: float,
+    domain: str = "Source",
+    logger=None,
+    is_master: bool = True,
+    metric_order: tuple[str, ...] = ("loss", "bce", "mmd", "acc", "dice", "precision", "recall"),
+) -> str:
+    if not is_master:
+        return ""
+
+    log: Callable[[str], None] = logger.info if logger else print
+
     msg = (
         f">> {phase} ({domain}):\tEpoch {epoch}/{tot_epochs}\t"
         f"Batch {batch_idx}/{num_batches}\t"
-        + (f"Loss {running_loss:.4f}\t" if running_loss is not None else "")
-        + (f"BCE {running_bce:.4f}\t" if running_bce is not None else "")
-        + (f"MMD {running_mmd:.4f}\t" if running_mmd is not None else "")
-        +(f"RunAcc {running_acc:.3f}\t"
-        f"AvgBatchTime {avg_batch_time:.4f}s")
+        + _fmt_metrics({**metrics, "avg_batch_time_s": avg_batch_time}, order=metric_order + ("avg_batch_time_s",))
     )
-    (logger.info if logger else print)(msg)
+    log(msg)
     return msg
+
 
 def finish_roc_plot(path, ax, is_primary=True):
     if is_primary:
